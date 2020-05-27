@@ -1,9 +1,5 @@
 <template>
   <div id="app">
-    <MediaProvider :mediaSource="currentMediaSource">
-      <Video />
-    </MediaProvider>
-
     <button
       @click="currentMediaSource = mediaSource.value"
       v-for="mediaSource in mediaSources"
@@ -11,6 +7,10 @@
     >
       Source {{ mediaSource.id + 1 }}
     </button>
+
+    <MediaProvider :mediaSource="currentMediaSource">
+      <Video />
+    </MediaProvider>
   </div>
 </template>
 

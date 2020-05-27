@@ -15,11 +15,13 @@ import {
   Watch
 } from "vue-property-decorator";
 import { BitrateInfo } from "../types";
+import { sleep } from "../utils";
 
 @Component
 export default class MediaProvider extends Vue {
-  hls: Hls = null;
-  mediaElement: HTMLVideoElement = null;
+  hls: Hls | null = null;
+  mediaElement: HTMLVideoElement | null = null;
+  isPlaying = false;
 
   @Prop() readonly mediaSource!: string;
   @Provide() readonly mediaId: string = "vue-hls-media";
@@ -64,7 +66,7 @@ export default class MediaProvider extends Vue {
       const newHls = new Hls();
       this.hls = newHls;
 
-      newHls.attachMedia(this.mediaElement);
+      newHls.attachMedia(this.getMediaElement());
       newHls.on(Hls.Events.MEDIA_ATTACHED, () => {
         newHls.loadSource(this.mediaSource);
       });
@@ -89,9 +91,136 @@ export default class MediaProvider extends Vue {
       newHls.on(Hls.Events.LEVEL_SWITCHED, (_, { level }) => {
         this.currentBirateIndex = level;
       });
-    } else if (this.mediaElement.canPlayType("application/vnd.apple.mpegurl")) {
+    } else if (
+      this.getMediaElement().canPlayType("application/vnd.apple.mpegurl")
+    ) {
       // For native support like Apple's safari
-      this.mediaElement.src = this.mediaSource;
+      this.getMediaElement().src = this.mediaSource;
+    }
+  }
+
+  getMediaElement() {
+    if (!this.mediaElement) {
+      throw new Error("Media element is not available");
+    }
+    return this.mediaElement;
+  }
+
+  checkMediaHasDataToPlay() {
+    const currentTime = this.getMediaElement().currentTime;
+    const timeRanges = Array.from(
+      { length: this.getMediaElement().buffered.length },
+      (_, index) => {
+        return [
+          this.getMediaElement().buffered.start(index),
+          this.getMediaElement().buffered.end(index)
+        ];
+      }
+    );
+
+    return timeRanges.some(timeRange => {
+      const [start, end] = timeRange;
+      return currentTime >= start && currentTime <= end;
+    });
+  }
+
+  @Provide() onSeeking() {
+    this.currentTime = this.getMediaElement().currentTime;
+    this.isLoading = this.checkMediaHasDataToPlay();
+  }
+
+  @Provide() async onLoadedMetadata() {
+    while (this.getMediaElement().duration === Infinity) {
+      // Edge cases: wait until duration is ready
+      await sleep(100);
+    }
+
+    this.duration = this.getMediaElement().duration;
+  }
+
+  @Provide() onRateChange() {
+    this.playbackRate = this.getMediaElement().playbackRate;
+  }
+
+  @Provide() onVolumeChange() {
+    this.muted = this.getMediaElement().muted;
+    this.volume = this.getMediaElement().volume;
+  }
+
+  @Provide() onPause() {
+    this.paused = true;
+    this.isPlaying = false;
+  }
+
+  @Provide() onPlay() {
+    this.paused = false;
+    this.ended = false;
+    this.isPlaying = true;
+  }
+
+  @Provide() onCanPlay() {
+    this.isLoading = false;
+  }
+
+  @Provide() onProgress() {
+    this.isLoading = false;
+    this.buffered = this.getMediaElement().buffered;
+  }
+
+  // The name is misleading as the event still get fired when data is available for playing
+  @Provide() onWaiting() {
+    this.isLoading = this.checkMediaHasDataToPlay();
+  }
+
+  @Provide() onTimeUpdate() {
+    this.currentTime = this.getMediaElement().currentTime;
+  }
+
+  @Provide() onEnded() {
+    this.ended = true;
+  }
+
+  @Provide() onPlaying() {
+    this.isPlaying = true;
+  }
+
+  @Provide() setCurrentTime(currentTime: number) {
+    this.getMediaElement().currentTime = currentTime;
+  }
+
+  @Provide() setLevel(level: number) {
+    this.hls && (this.hls.currentLevel = level);
+  }
+
+  @Provide() setPlaybackRate(playbackRate: number) {
+    this.getMediaElement().playbackRate = playbackRate;
+  }
+
+  @Provide() setVolume(volume: number) {
+    this.getMediaElement().volume = volume;
+  }
+
+  @Provide() setMuted(muted: boolean) {
+    this.getMediaElement().muted = muted;
+  }
+
+  @Provide() setPaused(paused: boolean) {
+    this.paused = paused;
+    const media = this.getMediaElement();
+    if (paused && this.isPlaying) {
+      media.pause();
+    }
+
+    if (!paused && !this.isPlaying) {
+      media.play();
+    }
+  }
+
+  @Provide() setCurrentBirateIndex(bitrateIndex: number) {
+    this.autoBitrateEnabled = bitrateIndex === -1;
+    this.currentBirateIndex = bitrateIndex;
+    if (this.hls && this.hls.currentLevel !== bitrateIndex) {
+      this.hls.currentLevel = bitrateIndex;
     }
   }
 }
