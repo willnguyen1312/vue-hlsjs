@@ -4,6 +4,9 @@
     <video
       @loadedmetadata="onLoadedMetadata"
       @timeupdate="onTimeUpdate"
+      @pause="onPause"
+      @play="onPlay"
+      @playing="onPlaying"
       controls
       class="video"
       :id="mediaId"
@@ -39,6 +42,7 @@ export default class Video extends Vue {
   @Inject() readonly mediaId!: string;
 
   @InjectReactive() duration!: number;
+  @InjectReactive() paused!: number;
   @InjectReactive() muted!: number;
   @InjectReactive() currentTime!: number;
   @InjectReactive() volume!: number;
@@ -47,8 +51,27 @@ export default class Video extends Vue {
   @InjectReactive() fps!: number;
 
   @Inject() readonly onLoadedMetadata!: () => void;
+  @Inject() readonly onPause!: () => void;
+  @Inject() readonly onPlay!: () => void;
+  @Inject() readonly onPlaying!: () => void;
   @Inject() readonly onTimeUpdate!: () => void;
   @Inject() readonly setLevel!: () => void;
+  @Inject() readonly setPaused!: (value: boolean) => void;
+
+  mounted() {
+    window.addEventListener("keydown", this.handlerKeyDown);
+  }
+
+  destroyed() {
+    window.removeEventListener("keydown", this.handlerKeyDown);
+  }
+
+  handlerKeyDown(event: KeyboardEvent) {
+    const { key } = event;
+    if (key === " ") {
+      this.setPaused(!this.paused);
+    }
+  }
 }
 </script>
 
@@ -62,6 +85,7 @@ export default class Video extends Vue {
 .video {
   width: 810px;
   height: 450px;
+  outline: none;
 }
 
 .resolution {
